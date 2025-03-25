@@ -130,7 +130,7 @@ def plot_speed_temp(writer, epoch, speeds, temps):
     image = plt.imread(buffer, format="png")
     writer.add_image("Plot/"+str(epoch), image, global_step=epoch, dataformats="HWC")
     buffer.close()
-    writer.close()
+    # writer.close()
 
 
     # terminal = sys.stdout

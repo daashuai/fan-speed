@@ -50,7 +50,7 @@ class ReplayBuffer:
 def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0, 
         steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99, 
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000, 
-        update_after=1000, update_every=50, num_test_episodes=10, max_ep_len=1000, save_freq=1):
+        update_after=1000, update_every=50, num_test_episodes=5, max_ep_len=1000, save_freq=1, eval_interval=25):
     """
     Soft Actor-Critic (SAC)
 
@@ -279,15 +279,26 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     def get_action(o, deterministic=False):
         return ac.act(torch.as_tensor(o, dtype=torch.float32),deterministic)
 
+
+    epoch = 0
+    best_score = -np.inf
+    best_model_weights = None
+    log_file = open(os.path.join(experiment_dir, "log.txt"), "w+")
+
     def test_agent():
-        for j in range(num_test_episodes):
+        test_returns = []
+        for _ in range(num_test_episodes):
             o, d, ep_ret, ep_len = test_env.reset(), False, 0, 0
             while not(d or (ep_len == max_ep_len)):
                 # Take deterministic actions at test time 
                 o, r, d, _ = test_env.step(get_action(o, True))
                 ep_ret += r
                 ep_len += 1
+            test_returns.append(ep_ret)
             # logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
+        avg_ret = np.mean(test_returns)
+        writer.add_scalar("Test/AverageReturn", avg_ret, epoch)
+        return avg_ret
 
     # Prepare for interaction with environment
     total_steps = steps_per_epoch * epochs
@@ -295,7 +306,6 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
     o, ep_ret, ep_len = env.reset(), 0, 0
 
     # Main loop: collect experience in env and update/log each epoch
-    epoch = 0
     for t in range(total_steps):
         
         # Until start_steps have elapsed, randomly sample actions
@@ -340,8 +350,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             # logger.store(EpRet=ep_ret, EpLen=ep_len)
             writer.add_scalar("TotalReturn", ep_ret, epoch)
             print("Epoch:" + str(epoch) + " :" + " TotalReturn :" + str(ep_ret) + "\n")
-            with open(os.path.join(experiment_dir, "log.txt"), "w") as log_file:
-                log_file.write("Epoch:" + str(epoch) + " :" + " TotalReturn :" + str(ep_ret) + "\n")
+            print("Epoch:" + str(epoch) + " :" + " TotalReturn :" + str(ep_ret) + "\n", file=log_file)
 
             energy = calculate_energy(env.speeds)
             speed_smooth = calculate_speed_smoothness(env.speeds)
@@ -366,27 +375,27 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         if (t+1) % steps_per_epoch == 0:
             epoch = (t+1) // steps_per_epoch
 
-            # Save model
-            # if (epoch % save_freq == 0) or (epoch == epochs):
-            #     logger.save_state({'env': env}, None)
+        # 每25个epoch执行完整评估
+        if epoch % eval_interval == 0 or epoch == epochs:
+            current_score = test_agent()
+            print(f"Epoch {epoch} | Test Score: {current_score:.2f}", file=log_file)
+        
+        # 保存最佳模型
+        if current_score > best_score:
+            best_score = current_score
+            best_model_weights = deepcopy(ac.state_dict())
+            torch.save(best_model_weights, 
+                      os.path.join(experiment_dir, f'best_model.pt'))
+            print(f"New best model saved at epoch {epoch} with score {current_score:.2f}", file=log_file)
 
-            # Test the performance of the deterministic version of the agent.
-            test_agent()
 
-            # Log info about epoch
-            # logger.log_tabular('Epoch', epoch)
-            # logger.log_tabular('EpRet', with_min_and_max=True)
-            # logger.log_tabular('TestEpRet', with_min_and_max=True)
-            # logger.log_tabular('EpLen', average_only=True)
-            # logger.log_tabular('TestEpLen', average_only=True)
-            # logger.log_tabular('TotalEnvInteracts', t)
-            # logger.log_tabular('Q1Vals', with_min_and_max=True)
-            # logger.log_tabular('Q2Vals', with_min_and_max=True)
-            # logger.log_tabular('LogPi', with_min_and_max=True)
-            # logger.log_tabular('LossPi', average_only=True)
-            # logger.log_tabular('LossQ', average_only=True)
-            # logger.log_tabular('Time', time.time()-start_time)
-            # logger.dump_tabular()
+    # 在训练结束后添加最终评估
+    if best_model_weights is not None:
+        ac.load_state_dict(best_model_weights)
+        final_score = test_agent()
+        print(f"Final evaluation score: {final_score:.2f}", file=log_file)
+        torch.save(ac.state_dict(), 
+                  os.path.join(experiment_dir, 'final_model.pt'))
 
 if __name__ == '__main__':
     import argparse
