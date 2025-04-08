@@ -8,7 +8,7 @@ import time
 import core as core
 from cooling import CoolingEnv
 # from logx import EpochLogger
-from utils import plot_speed_temp,calculate_energy,calculate_speed_smoothness,calculate_speed_deviation,calculate_temp_deviation
+from utils import plot_speed_temp,calculate_energy,calculate_speed_smoothness,calculate_speed_deviation,calculate_temp_deviation,calculate_max_change,calculate_temp_stabilization_time
 from torch.utils.tensorboard import SummaryWriter
 import os
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
@@ -50,7 +50,7 @@ class ReplayBuffer:
 def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0, 
         steps_per_epoch=4000, epochs=100, replay_size=int(1e6), gamma=0.99, 
         polyak=0.995, lr=1e-3, alpha=0.2, batch_size=100, start_steps=10000, 
-        update_after=1000, update_every=50, num_test_episodes=5, max_ep_len=1000, save_freq=1, eval_interval=25):
+        update_after=1000, update_every=50, num_test_episodes=5, max_trajectory_len=1000, save_freq=1, eval_interval=10):
     """
     Soft Actor-Critic (SAC)
 
@@ -139,7 +139,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         num_test_episodes (int): Number of episodes to test the deterministic
             policy at the end of each epoch.
 
-        max_ep_len (int): Maximum length of trajectory / episode / rollout.
+        max_trajectory_len (int): Maximum length of trajectory / episode / rollout.
 
         logger_kwargs (dict): Keyword args for EpochLogger.
 
@@ -282,28 +282,57 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
     epoch = 0
     best_score = -np.inf
+    best_epoch = -1
     best_model_weights = None
-    log_file = open(os.path.join(experiment_dir, "log.txt"), "w+")
 
-    def test_agent():
+    def test_agent(_epoch):
         test_returns = []
+        test_energy = []
+        test_speed_smooth = []
+        test_temp_deviation = []
+        test_max_speed_change = []
+        test_stablize_time = []
+        
         for _ in range(num_test_episodes):
-            o, d, ep_ret, ep_len = test_env.reset(), False, 0, 0
-            while not(d or (ep_len == max_ep_len)):
+            o, d, trajectory_ret, trajectory_len = test_env.reset(), False, 0, 0
+            while not(d or (trajectory_len == max_trajectory_len)):
                 # Take deterministic actions at test time 
                 o, r, d, _ = test_env.step(get_action(o, True))
-                ep_ret += r
-                ep_len += 1
-            test_returns.append(ep_ret)
-            # logger.store(TestEpRet=ep_ret, TestEpLen=ep_len)
+                trajectory_ret += r
+                trajectory_len += 1
+
+            energy = calculate_energy(test_env.speeds)
+            speed_smooth = calculate_speed_smoothness(test_env.speeds)
+            temp_deviation = calculate_temp_deviation(test_env.temps)
+            max_speed_change = calculate_max_change(test_env.speeds)
+            stablize_time = calculate_temp_stabilization_time(test_env.temps, test_env.temp_target)
+
+            test_returns.append(trajectory_ret)
+            test_energy.append(energy)
+            test_speed_smooth.append(speed_smooth)
+            test_temp_deviation.append(temp_deviation)
+            test_max_speed_change.append(max_speed_change)
+            test_stablize_time.append(stablize_time)
+
+            # logger.store(TestEpRet=trajectory_ret, TestEpLen=trajectory_len)
         avg_ret = np.mean(test_returns)
-        writer.add_scalar("Test/AverageReturn", avg_ret, epoch)
+        avg_energy = np.mean(test_energy)
+        avg_speed_smooth = np.mean(test_speed_smooth)
+        avg_temp_deviation = np.mean(test_temp_deviation)
+        max_max_speed_change = np.max(test_max_speed_change)
+        avg_stablize_time = np.mean(test_stablize_time)
+        writer.add_scalar("Test/AverageReturn", avg_ret, _epoch)
+        writer.add_scalar("Test/EnergyConsume", avg_energy, _epoch)
+        writer.add_scalar("Test/SpeedSmooth", avg_speed_smooth, _epoch)
+        writer.add_scalar("Test/TempDeviation", avg_temp_deviation, _epoch)
+        writer.add_scalar("Test/MaxSpeedChange", max_max_speed_change, _epoch)
+        writer.add_scalar("Test/TempStablizeTime", avg_stablize_time, _epoch)
         return avg_ret
 
     # Prepare for interaction with environment
     total_steps = steps_per_epoch * epochs
     start_time = time.time()
-    o, ep_ret, ep_len = env.reset(), 0, 0
+    o, trajectory_ret, trajectory_len = env.reset(), 0, 0
 
     # Main loop: collect experience in env and update/log each epoch
     for t in range(total_steps):
@@ -318,13 +347,13 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
         # Step the env
         o2, r, d, _ = env.step(a)
-        ep_ret += r
-        ep_len += 1
+        trajectory_ret += r
+        trajectory_len += 1
 
         # Ignore the "done" signal if it comes from hitting the time
         # horizon (that is, when it's an artificial terminal signal
         # that isn't based on the agent's state)
-        d = False if ep_len==max_ep_len else d
+        d = False if trajectory_len==max_trajectory_len else d
 
         # Store experience to replay buffer
         replay_buffer.store(o, a, r, o2, d)
@@ -346,25 +375,26 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             plot_speed_temp(writer, epoch, env.speeds, env.temps)
 
         # End of trajectory handling
-        if d or (ep_len == max_ep_len):
-            # logger.store(EpRet=ep_ret, EpLen=ep_len)
-            writer.add_scalar("TotalReturn", ep_ret, epoch)
-            print("Epoch:" + str(epoch) + " :" + " TotalReturn :" + str(ep_ret) + "\n")
-            print("Epoch:" + str(epoch) + " :" + " TotalReturn :" + str(ep_ret) + "\n", file=log_file)
+        if d or (trajectory_len == max_trajectory_len):
+            # logger.store(EpRet=trajectory_ret, EpLen=trajectory_len)
+            writer.add_scalar("Train/TotalReturn", trajectory_ret, epoch)
+            print("Epoch:" + str(epoch) + " :" + " TotalReturn :" + str(trajectory_ret) + "\n")
+            with open(os.path.join(experiment_dir, "log.txt"), "a+") as log_file:
+                print("Epoch:" + str(epoch) + " :" + " TotalReturn :" + str(trajectory_ret) + "\n", file=log_file)
 
             energy = calculate_energy(env.speeds)
             speed_smooth = calculate_speed_smoothness(env.speeds)
             temp_deviation = calculate_temp_deviation(env.temps)
 
-            writer.add_scalar("EnergyConsume", energy, epoch)
-            writer.add_scalar("SpeedSmooth", speed_smooth, epoch)
-            writer.add_scalar("TempDeviation", temp_deviation, epoch)
+            writer.add_scalar("Train/EnergyConsume", energy, epoch)
+            writer.add_scalar("Train/SpeedSmooth", speed_smooth, epoch)
+            writer.add_scalar("Train/TempDeviation", temp_deviation, epoch)
 
-            o, ep_ret, ep_len = env.reset(), 0, 0
+            o, trajectory_ret, trajectory_len = env.reset(), 0, 0
 
         # Update handling
         if t >= update_after and t % update_every == 0:
-            for j in range(update_every):
+            for _ in range(update_every):
                 batch = replay_buffer.sample_batch(batch_size)
                 update(data=batch)
             # for name, param in ac.named_parameters():
@@ -376,24 +406,31 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             epoch = (t+1) // steps_per_epoch
 
         # 每25个epoch执行完整评估
-        if epoch % eval_interval == 0 or epoch == epochs:
-            current_score = test_agent()
-            print(f"Epoch {epoch} | Test Score: {current_score:.2f}", file=log_file)
+        if t % (steps_per_epoch*eval_interval) == 0 or epoch == epochs:
+            current_score = test_agent(epoch)
+            print(f"Epoch {epoch} | Test Score: {current_score:.2f}")
+            with open(os.path.join(experiment_dir, "log.txt"), "a+") as log_file:
+                print(f"Epoch {epoch} | Test Score: {current_score:.2f}", file=log_file)
         
         # 保存最佳模型
         if current_score > best_score:
             best_score = current_score
+            best_epoch = epoch
             best_model_weights = deepcopy(ac.state_dict())
             torch.save(best_model_weights, 
                       os.path.join(experiment_dir, f'best_model.pt'))
-            print(f"New best model saved at epoch {epoch} with score {current_score:.2f}", file=log_file)
+            print(f"New best model saved at epoch {epoch} with score {current_score:.2f}")
+            with open(os.path.join(experiment_dir, "log.txt"), "a+") as log_file:
+                print(f"New best model saved at epoch {epoch} with score {current_score:.2f}", file=log_file)
 
 
     # 在训练结束后添加最终评估
     if best_model_weights is not None:
         ac.load_state_dict(best_model_weights)
-        final_score = test_agent()
-        print(f"Final evaluation score: {final_score:.2f}", file=log_file)
+        final_score = test_agent(epochs + 1)
+        print(f"Final evaluation score: {final_score:.2f} at Epoch: {best_epoch}")
+        with open(os.path.join(experiment_dir, "log.txt"), "a+") as log_file:
+            print(f"Final evaluation score: {final_score:.2f} at Epoch: {best_epoch}", file=log_file)
         torch.save(ac.state_dict(), 
                   os.path.join(experiment_dir, 'final_model.pt'))
 

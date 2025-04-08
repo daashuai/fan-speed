@@ -46,7 +46,7 @@ def calculate_max_change(fan_speeds):
     max_change = np.max(np.abs(changes))
     return max_change
 
-def calculate_stabilization_time(fan_speeds, target_speed, target_tolerance, time_step=1.0):
+def calculate_speed_stabilization_time(fan_speeds, target_speed, target_tolerance, time_step=10):
     """
     计算达到稳定状态的时间。
     
@@ -65,6 +65,26 @@ def calculate_stabilization_time(fan_speeds, target_speed, target_tolerance, tim
         if np.all(within_tolerance[i:]):  # 检查从时间步 i 到最后是否都在容忍范围内
             return i * time_step
     return None
+
+def calculate_temp_stabilization_time(temperatures, target_temp, target_tolerance=2, time_step=10):
+    """
+    计算达到温度稳定状态的时间。
+    
+    Args:
+        temperatures (list or np.ndarray): 温度记录，单位为摄氏度。
+        target_temp (float): 目标温度。
+        target_tolerance (float): 容忍范围，单位为摄氏度。
+        time_step (float): 时间步的长度，单位为秒。
+    
+    Returns:
+        float or None: 稳定时间（秒），若始终未稳定，则返回 None。
+    """
+    temperatures = np.array(temperatures)
+    within_tolerance = np.abs(temperatures - target_temp) <= target_tolerance
+    for i in range(len(temperatures)):
+        if np.all(within_tolerance[i:]):  # 检查从时间步 i 开始是否持续稳定
+            return i * time_step
+    return np.inf
 
 def calculate_speed_deviation(fan_speeds, target_speed):
     """
