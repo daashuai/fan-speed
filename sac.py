@@ -444,6 +444,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--exp_name', type=str, default='sac')
+    parser.add_argument('--obs_dim', type=int, default=1)
     args = parser.parse_args()
 
     # from run_utils import setup_logger_kwargs
@@ -452,7 +453,7 @@ if __name__ == '__main__':
     torch.set_num_threads(torch.get_num_threads())
 
     def make():
-        env = CoolingEnv()
+        env = CoolingEnv(obs_dim=args.obs_dim)
         return env
     
     sac(lambda : make(), actor_critic=core.MLPActorCritic,

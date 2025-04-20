@@ -42,7 +42,7 @@ class CoolingEnv(gym.Env):
         Considered solved when the total step bigger than 1000.
     """
 
-    def __init__(self):
+    def __init__(self, obs_dim=5):
         self.heat_base = 2000
         self.heat_add  = 500
         self.heat_on_temp = 1000
@@ -67,9 +67,11 @@ class CoolingEnv(gym.Env):
         self.max_steps = 1000
         self.step_counter = 0
         
+
+        self.obs_dim = obs_dim
         self.action_space = spaces.Box(low=-1,
                 high=1, shape=(1,), dtype=float)
-        self.observation_space = spaces.Discrete(6)
+        self.observation_space = spaces.Discrete(self.obs_dim + 1)
 
         self.speed = self.fan_min_speed
         self.steps = 0
@@ -79,7 +81,8 @@ class CoolingEnv(gym.Env):
         self.speeds = []
         self.counter = 0
 
-        self.state = [self.temp_ambient, self.temp_ambient, self.temp_ambient, self.temp_ambient, self.temp_ambient]
+        # self.state = [self.temp_ambient, self.temp_ambient, self.temp_ambient, self.temp_ambient, self.temp_ambient]
+        self.state = [self.temp_ambient] * self.obs_dim
         mean = sum(self.state)/len(self.state)
         self.state_normal = []
         for x in self.state:
@@ -273,7 +276,8 @@ class CoolingEnv(gym.Env):
         self.steps = 0
         self.step_counter = 0
 
-        self.state = [self.temp_ambient, self.temp_ambient, self.temp_ambient, self.temp_ambient, self.temp_ambient]
+        # self.state = [self.temp_ambient, self.temp_ambient, self.temp_ambient, self.temp_ambient, self.temp_ambient]
+        self.state = [self.temp_ambient] * self.obs_dim
         mean = sum(self.state)/len(self.state)
         self.state_normal = []
         for x in self.state:
