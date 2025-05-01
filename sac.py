@@ -444,7 +444,9 @@ if __name__ == '__main__':
     parser.add_argument('--seed', '-s', type=int, default=0)
     parser.add_argument('--epochs', type=int, default=500)
     parser.add_argument('--exp_name', type=str, default='sac')
-    parser.add_argument('--obs_dim', type=int, default=1)
+    parser.add_argument('--obs_dim', type=int, default=5)
+    parser.add_argument('--model_name', type=str, default='mlp')
+
     args = parser.parse_args()
 
     # from run_utils import setup_logger_kwargs
@@ -456,6 +458,19 @@ if __name__ == '__main__':
         env = CoolingEnv(obs_dim=args.obs_dim)
         return env
     
-    sac(lambda : make(), actor_critic=core.MLPActorCritic,
-        ac_kwargs=dict(hidden_sizes=[args.hid]*args.l), 
+    if args.model_name == "mlp":
+        ac = core.MLPActorCritic
+        ac_kwargs=dict(hidden_sizes=[args.hid]*args.l)
+    elif args.model_name == "trans":
+        ac = core.TransformerActorCritic
+        ac_kwargs = dict()
+    elif args.model_name == "itr":
+        ac = core.ITrXLActorCritic
+        ac_kwargs = dict()
+    elif args.model_name == "gtr":
+        ac = core.GTrXLActorCritic
+        ac_kwargs = dict()
+
+
+    sac(lambda : make(), actor_critic=ac, ac_kwargs=ac_kwargs, 
         gamma=args.gamma, seed=args.seed, epochs=args.epochs)
