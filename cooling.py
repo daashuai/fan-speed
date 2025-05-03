@@ -69,6 +69,7 @@ class CoolingEnv(gym.Env):
         self.fan_min_speed = 2000
         self.fan_speed_add_high = 200
         self.fan_speed_add_low = -200
+        self.fan_speed_current = self.fan_min_speed
 
         self.temp_target = 40
         self.temp_ambient = 20
@@ -100,6 +101,10 @@ class CoolingEnv(gym.Env):
         self.state_normal.append(mean)
 
     def step(self, action):
+
+        fan_speed_delta = action
+        self.fan_speed_current += fan_speed_delta
+
         # 混合模式切换逻辑
         if self.workload_mode == 'mixed':
             self.step_counter += 1
