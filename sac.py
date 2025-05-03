@@ -11,7 +11,9 @@ from cooling import CoolingEnv
 from utils import plot_speed_temp,calculate_energy,calculate_speed_smoothness,calculate_speed_deviation,calculate_temp_deviation,calculate_max_change,calculate_temp_stabilization_time
 from torch.utils.tensorboard import SummaryWriter
 import os
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 from datetime import datetime
 
 class ReplayBuffer:
@@ -43,7 +45,7 @@ class ReplayBuffer:
                      act=self.act_buf[idxs],
                      rew=self.rew_buf[idxs],
                      done=self.done_buf[idxs])
-        return {k: torch.as_tensor(v, dtype=torch.float32) for k,v in batch.items()}
+        return {k: torch.as_tensor(v, dtype=torch.float32).to(device) for k,v in batch.items()}
 
 
 
@@ -170,8 +172,8 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
 
     # Create actor-critic module and target networks
-    ac = actor_critic(env.observation_space, env.action_space, **ac_kwargs)
-    ac_targ = deepcopy(ac)
+    ac = actor_critic(env.observation_space, env.action_space, **ac_kwargs).to(device)
+    ac_targ = deepcopy(ac).to(device)
 
 
     # Freeze target networks with respect to optimizers (only update via polyak averaging)
@@ -212,8 +214,9 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         loss_q = loss_q1 + loss_q2
 
         # Useful info for logging
-        q_info = dict(Q1Vals=q1.detach().numpy(),
-                      Q2Vals=q2.detach().numpy())
+        # q_info = dict(Q1Vals=q1.detach().numpy(),
+        #               Q2Vals=q2.detach().numpy())
+        q_info = 0
 
         return loss_q, q_info
 
@@ -229,7 +232,8 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         loss_pi = (alpha * logp_pi - q_pi).mean()
 
         # Useful info for logging
-        pi_info = dict(LogPi=logp_pi.detach().numpy())
+        # pi_info = dict(LogPi=logp_pi.detach().numpy())
+        pi_info = 0
 
         return loss_pi, pi_info
 
@@ -277,7 +281,8 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
                 p_targ.data.add_((1 - polyak) * p.data)
 
     def get_action(o, deterministic=False):
-        return ac.act(torch.as_tensor(o, dtype=torch.float32),deterministic)
+        o_tensor = torch.as_tensor(o, dtype=torch.float32).to(device)
+        return ac.act(o_tensor, deterministic)
 
 
     epoch = 0
@@ -297,7 +302,8 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             o, d, trajectory_ret, trajectory_len = test_env.reset(), False, 0, 0
             while not(d or (trajectory_len == max_trajectory_len)):
                 # Take deterministic actions at test time 
-                o, r, d, _ = test_env.step(get_action(o, True))
+                # a = get_action(o, True).detach().cpu().numpy()
+                o, r, d, _ = test_env.step(get_action(o, True).detach().cpu().numpy())
                 trajectory_ret += r
                 trajectory_len += 1
 
@@ -341,7 +347,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         # from a uniform distribution for better exploration. Afterwards, 
         # use the learned policy. 
         if t > start_steps:
-            a = get_action(o)
+            a = get_action(o).detach().cpu().numpy()
         else:
             a = env.action_space.sample()
 

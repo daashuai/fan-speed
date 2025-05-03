@@ -96,7 +96,7 @@ class MLPActorCritic(nn.Module):
     def act(self, obs, deterministic=False):
         with torch.no_grad():
             a, _ = self.pi(obs, deterministic, False)
-            return a.numpy()
+            return a
 
 class PositionalEncoding(nn.Module):
     """
@@ -453,8 +453,7 @@ class TransformerActorCritic(nn.Module):
         with torch.no_grad():
             obs = obs.unsqueeze(0)
             a, _ = self.pi(obs, deterministic, False)
-            b = a.numpy()
-            return a.numpy()
+            return a
 
 class ITrXLActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, embed_dim=32, num_heads=4, feedforward_dim=32, num_layers=2, dropout=0.1):
@@ -474,8 +473,7 @@ class ITrXLActorCritic(nn.Module):
         with torch.no_grad():
             obs = obs.unsqueeze(0)
             a, _ = self.pi(obs, deterministic, False)
-            b = a.numpy()
-            return a.numpy()
+            return a
 
 class GTrXLActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, embed_dim=32, num_heads=4, feedforward_dim=32, num_layers=2, dropout=0.1):
@@ -495,8 +493,7 @@ class GTrXLActorCritic(nn.Module):
         with torch.no_grad():
             obs = obs.unsqueeze(0)
             a, _ = self.pi(obs, deterministic, False)
-            b = a.numpy()
-            return a.numpy()
+            return a
 
 
 
