@@ -452,6 +452,7 @@ if __name__ == '__main__':
     parser.add_argument('--exp_name', type=str, default='sac')
     parser.add_argument('--obs_dim', type=int, default=5)
     parser.add_argument('--model_name', type=str, default='mlp')
+    parser.add_argument('--workload_mode', type=str, default='medium')
 
     args = parser.parse_args()
 
@@ -461,7 +462,7 @@ if __name__ == '__main__':
     torch.set_num_threads(torch.get_num_threads())
 
     def make():
-        env = CoolingEnv(obs_dim=args.obs_dim)
+        env = CoolingEnv(obs_dim=args.obs_dim, workload_mode=args.workload_mode)
         return env
     
     if args.model_name == "mlp":

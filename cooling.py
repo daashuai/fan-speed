@@ -42,14 +42,25 @@ class CoolingEnv(gym.Env):
         Considered solved when the total step bigger than 1000.
     """
 
-    def __init__(self, obs_dim=5):
+    def __init__(self, obs_dim=5, workload_mode='medium', mix_switch_interval=200):
         self.heat_base = 2000
         self.heat_add  = 500
         self.heat_on_temp = 1000
         self.heat_remove  = 300
         self.heat_modifiers = [2.4, 2.4, 2.4, 2.4, 2.4, 2.4, 2.4, 2.4, 2.4, 2.4]
-        # self.heat_modifiers = [3, 3, 3, 2, 1, 4, 4, 2, 1, 1]
+        ## 定义不同负载模式的发热系数
+        self.workload_config = {
+            'low': [1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4, 1.4],
+            'medium': [2.4, 2.4, 2.4, 2.4, 2.4, 2.4, 2.4, 2.4, 2.4, 2.4],
+            'high': [3.4, 3.4, 3.4, 3.4, 3.4, 3.4, 3.4, 3.4, 3.4, 3.4]
+        } 
         self.modefier_gap = 1000
+    
+        # 新增工作模式配置
+        self.workload_mode = workload_mode.lower()
+        self.mix_switch_interval = mix_switch_interval
+        self.step_counter = 0
+        self.workload_mode_mix = 'low'
 
         self.fan_effect_modifer = 1000
         self.noise = 0.2
@@ -65,7 +76,6 @@ class CoolingEnv(gym.Env):
         self.interval = 10
         
         self.max_steps = 1000
-        self.step_counter = 0
         
 
         self.obs_dim = obs_dim
@@ -90,6 +100,23 @@ class CoolingEnv(gym.Env):
         self.state_normal.append(mean)
 
     def step(self, action):
+        # 混合模式切换逻辑
+        if self.workload_mode == 'mixed':
+            self.step_counter += 1
+            if self.step_counter >= self.mix_switch_interval:
+                self.step_counter = 0
+                # 循环切换子模式：low->medium->high->low
+                if self.workload_mode_mix == 'low':
+                    self.workload_mode_mix = 'medium'
+                elif self.workload_mode_mix == 'medium':
+                    self.workload_mode_mix = 'high'
+                else:
+                    self.workload_mode_mix = 'low'
+
+        if self.workload_mode == 'mixed':
+            self.heat_modifiers = self.workload_config[self.workload_mode_mix]
+        else:
+            self.heat_modifiers = self.workload_config[self.workload_mode]
 
         s = self.temp
 
