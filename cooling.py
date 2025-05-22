@@ -337,6 +337,7 @@ class CoolingEnv(gym.Env):
 
         self.temps = []
         self.speeds = []
+        self.heat_deltas = [0 for _ in range(self.split_number)]
 
         return self.state_normal
 
