@@ -436,7 +436,7 @@ class TransformerQFunction(nn.Module):
 
 
 class TransformerActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, embed_dim=32, num_heads=4, feedforward_dim=32, num_layers=2, dropout=0.1):
+    def __init__(self, observation_space, action_space, embed_dim=32, num_heads=4, feedforward_dim=32, num_layers=1, dropout=0.1):
         super().__init__()
 
         # obs_dim = observation_space.n

@@ -13,6 +13,7 @@ from utils import (
     calculate_temp_stabilization_time
 )
 from torch.utils.tensorboard import SummaryWriter
+from pid_tuner import ZieglerNicholsAutoTuner
 
 class BasicPID:
     def __init__(self, Kp, Ki, Kd, set_point, output_limits=(-1, 1)):
@@ -42,6 +43,43 @@ class BasicPID:
         output = P + I + D
         return np.clip(output, self.output_min, self.output_max)
 
+# class PID:
+#     def __init__(self, Kp, Ki, Kd, set_point, control_limits=(-1, 1), integral_limits=(-np.inf, np.inf), output_limits=(2000, 10000)):
+#         self.Kp = Kp
+#         self.Ki = Ki
+#         self.Kd = Kd
+#         self.set_point = set_point
+#         self.output_min, self.output_max = output_limits
+#         self.int_min, self.int_max = integral_limits
+#         self.control_min, self.control_max = control_limits
+
+#         self.last_error = 0
+#         self.integral = 0
+#         self.last_time = time.time()
+
+#     def compute(self, current_value):
+#         current_time = time.time()
+#         # dt = current_time - self.last_time if self.last_time else 1.0
+#         dt = 1
+
+#         error = self.set_point - current_value
+
+#         P = self.Kp * error
+#         self.integral += error * dt
+#         self.integral = np.clip(self.integral, self.int_min, self.int_max)
+#         I = self.Ki * self.integral
+#         D = self.Kd * (error - self.last_error) / dt
+
+#         self.last_error = error
+#         self.last_time = current_time
+
+#         control = P + I + D
+#         normalized_control = np.clip(control, self.control_min, self.control_max)
+#         output = 2000 + (normalized_control + 1) * 4000
+#         print(normalized_control)
+#         return np.clip(output, self.output_min, self.output_max)
+
+
 class PID:
     def __init__(self, Kp, Ki, Kd, set_point, output_limits=(-1, 1), integral_limits=(-np.inf, np.inf)):
         self.Kp = Kp
@@ -60,7 +98,7 @@ class PID:
         # dt = current_time - self.last_time if self.last_time else 1.0
         dt = 1
 
-        error = self.set_point - current_value
+        error = current_value - self.set_point
 
         P = self.Kp * error
         self.integral += error * dt
@@ -96,7 +134,8 @@ def pid(args):
         Kd=args.Kd,
         set_point=env.temp_target,
         output_limits=(env.fan_min_speed, env.fan_max_speed)
-    
+    )
+
     # 训练循环（保持与SAC相同的epoch结构）
     best_score = -np.inf
     total_steps = args.epochs * args.steps_per_epoch
@@ -107,16 +146,15 @@ def pid(args):
         current_temp = state[-1]  # 获取平均温度
         episode_reward = 0
         steps = 0
-        
+
         while steps < args.steps_per_epoch:
             # 生成PID控制信号
             fan_speed = pid.compute(current_temp)
             fan_speed_delta = fan_speed - env.fan_speed_current
-            state, reward, done, _ = env.step(fan_speed_delta))
-            
+            state, reward, done, _ = env.step(fan_speed_delta)
             # 记录数据
             episode_reward += reward
-            current_temp = next_state[-1]
+            current_temp = state[-1]
             steps += 1
             
             if done:
@@ -145,7 +183,7 @@ def pid(args):
             for _ in range(args.max_trajectory_len):
                 fan_speed = pid.compute(current_temp)
                 fan_speed_delta = fan_speed - env.fan_speed_current
-                state, reward, done, _ = env.step(fan_speed_delta))
+                state, reward, done, _ = env.step(fan_speed_delta)
                 total_reward += reward
                 current_temp = state[-1]
                 
