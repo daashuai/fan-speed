@@ -61,6 +61,8 @@ class CoolingEnv(gym.Env):
         self.mix_switch_interval = mix_switch_interval
         self.step_counter = 0
         self.workload_mode_mix = 'low'
+        self.workload_mode_low_to_high = 'low'
+        self.workload_mode_high_to_low = 'high'
 
         self.fan_effect_modifer = 1000
         self.noise = 0.2
@@ -94,7 +96,7 @@ class CoolingEnv(gym.Env):
 
         # 新增热量延迟传递，每次传递的热量被分成split_number份
         self.split_number = 3
-        self.heat_deltas = [0 for _ in range(self.split_number)]
+        self.heat_deltas = [0.0 for _ in range(self.split_number)]
         
         # self.state = [self.temp_ambient, self.temp_ambient, self.temp_ambient, self.temp_ambient, self.temp_ambient]
         self.state = [self.temp_ambient] * self.obs_dim
@@ -124,9 +126,22 @@ class CoolingEnv(gym.Env):
                 #     self.workload_mode_mix = 'low'
                 available_mode = [m for m in modes if m != self.workload_mode_mix]
                 self.workload_mode_mix = random.choice(available_mode)
-
-        if self.workload_mode == 'mixed':
             self.heat_modifiers = self.workload_config[self.workload_mode_mix]
+
+        elif self.workload_mode == 'low_to_high':
+            self.step_counter += 1
+            if self.step_counter > 500:
+                self.step_counter = 0
+                self.workload_mode_low_to_high = 'high'
+            self.heat_modifiers = self.workload_config[self.workload_mode_low_to_high]
+
+        elif self.workload_mode == 'high_to_low':
+            self.step_counter += 1
+            if self.step_counter > 500:
+                self.step_counter = 0
+                self.workload_mode_high_to_low = 'low'
+            self.heat_modifiers = self.workload_config[self.workload_mode_high_to_low]
+
         else:
             self.heat_modifiers = self.workload_config[self.workload_mode]
 
@@ -159,21 +174,21 @@ class CoolingEnv(gym.Env):
         # task_level = HEAT_MODIFIERS[int(self.steps/MODEFIER_GAP)]
         task_level = self.heat_modifiers[random.randint(0, len(self.heat_modifiers)-1)]
 
-        heat_increase = self.heat_add * task_level - self.heat_remove*(self.speed/self.fan_effect_modifer)
-
         # 将热量增量分成split_number份加入队列
-        delta = heat_increase // self.split_number
+        delta = (self.heat_add * task_level) / self.split_number
         for i in range(self.split_number):
             self.heat_deltas[i] += delta
 
         # 取当前时刻下的热量
         current_delta = self.heat_deltas[0]
-        self.heat_gross += current_delta
         self.heat_deltas = [
             self.heat_deltas[1],
             self.heat_deltas[2],
-            0
+            0.0
         ]
+
+        heat_increase = current_delta - self.heat_remove*(self.speed/self.fan_effect_modifer)
+        self.heat_gross += heat_increase
 
         self.temp = self.temp_ambient + self.heat_gross/self.heat_on_temp + math.sin(self.steps/1000) * self.noise 
         
@@ -326,6 +341,8 @@ class CoolingEnv(gym.Env):
         self.temp = self.temp_ambient 
         self.steps = 0
         self.step_counter = 0
+        self.workload_mode_low_to_high = 'low'
+        self.workload_mode_high_to_low = 'high'
 
         # self.state = [self.temp_ambient, self.temp_ambient, self.temp_ambient, self.temp_ambient, self.temp_ambient]
         self.state = [self.temp_ambient] * self.obs_dim
@@ -337,7 +354,7 @@ class CoolingEnv(gym.Env):
 
         self.temps = []
         self.speeds = []
-        self.heat_deltas = [0 for _ in range(self.split_number)]
+        self.heat_deltas = [0.0 for _ in range(self.split_number)]
 
         return self.state_normal
 
