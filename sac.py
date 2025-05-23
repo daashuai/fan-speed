@@ -11,8 +11,8 @@ from cooling import CoolingEnv
 from utils import plot_speed_temp,calculate_energy,calculate_speed_smoothness,calculate_speed_deviation,calculate_temp_deviation,calculate_max_change,calculate_temp_stabilization_time
 from torch.utils.tensorboard import SummaryWriter
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 from datetime import datetime
 
@@ -298,6 +298,8 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         test_max_speed_change = []
         test_stablize_time = []
         
+        epoch_start_time = time.time()
+
         for _ in range(num_test_episodes):
             o, d, trajectory_ret, trajectory_len = test_env.reset(), False, 0, 0
             while not(d or (trajectory_len == max_trajectory_len)):
@@ -321,6 +323,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             test_stablize_time.append(stablize_time)
 
             # logger.store(TestEpRet=trajectory_ret, TestEpLen=trajectory_len)
+        test_epoch_time = time.time() - epoch_start_time
         avg_ret = np.mean(test_returns)
         avg_energy = np.mean(test_energy)
         avg_speed_smooth = np.mean(test_speed_smooth)
@@ -333,6 +336,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         writer.add_scalar("Test/TempDeviation", avg_temp_deviation, _epoch)
         writer.add_scalar("Test/MaxSpeedChange", max_max_speed_change, _epoch)
         writer.add_scalar("Test/TempStablizeTime", avg_stablize_time, _epoch)
+        writer.add_scalar("Test/EpochTime", test_epoch_time, _epoch)
         return avg_ret
 
     # Prepare for interaction with environment
@@ -382,11 +386,14 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
         # End of trajectory handling
         if d or (trajectory_len == max_trajectory_len):
+            epoch_time = time.time() - start_time
             # logger.store(EpRet=trajectory_ret, EpLen=trajectory_len)
+            writer.add_scalar("Train/EpochTime", epoch_time, epoch)
             writer.add_scalar("Train/TotalReturn", trajectory_ret, epoch)
             print("Epoch:" + str(epoch) + " :" + " TotalReturn :" + str(trajectory_ret) + "\n")
             with open(os.path.join(experiment_dir, "log.txt"), "a+") as log_file:
                 print("Epoch:" + str(epoch) + " :" + " TotalReturn :" + str(trajectory_ret) + "\n", file=log_file)
+                print("Epoch:" + str(epoch) + " :" + " EpochTime :" + str(epoch_time) + "\n", file=log_file)
 
             energy = calculate_energy(env.speeds)
             speed_smooth = calculate_speed_smoothness(env.speeds)
@@ -397,6 +404,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
             writer.add_scalar("Train/TempDeviation", temp_deviation, epoch)
 
             o, trajectory_ret, trajectory_len = env.reset(), 0, 0
+            start_time = time.time()
 
         # Update handling
         if t >= update_after and t % update_every == 0:
