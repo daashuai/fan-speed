@@ -43,7 +43,7 @@ class CoolingEnv(gym.Env):
     """
 
     def __init__(self, obs_dim=5, workload_mode='medium', mix_switch_interval=200):
-        self.heat_base = 2000
+        self.heat_base = 3500
         self.heat_add  = 500
         self.heat_on_temp = 1000
         self.heat_remove  = 300
@@ -74,7 +74,7 @@ class CoolingEnv(gym.Env):
         self.fan_speed_current = self.fan_min_speed
 
         self.temp_target = 40
-        self.temp_ambient = 20
+        self.temp_ambient = 35
 
         self.interval = 10
         
@@ -174,10 +174,12 @@ class CoolingEnv(gym.Env):
         # task_level = HEAT_MODIFIERS[int(self.steps/MODEFIER_GAP)]
         task_level = self.heat_modifiers[random.randint(0, len(self.heat_modifiers)-1)]
 
-        # 将热量增量分成split_number份加入队列
-        delta = (self.heat_add * task_level) / self.split_number
-        for i in range(self.split_number):
-            self.heat_deltas[i] += delta
+        # 将热量增量按比例分成split_number份加入队列（6:2:2）
+        delta = (self.heat_add * task_level) * 0.6
+        remain_delta = (self.heat_add * task_level) * 0.2
+        self.heat_deltas[0] += delta
+        self.heat_deltas[1] += remain_delta
+        self.heat_deltas[2] += remain_delta
 
         # 取当前时刻下的热量
         current_delta = self.heat_deltas[0]
@@ -242,6 +244,7 @@ class CoolingEnv(gym.Env):
             r1 = -math.log(self.temp - self.temp_target -1 )
         elif self.temp >= self.temp_target - 2 and self.temp <= self.temp_target + 2:
             r1 = 2
+            # r1 = 2 * (1 - abs(self.temp - self.temp_target)/2)
         elif self.temp < self.temp_target - 2  and self.temp >= self.temp_ambient:
             r1 = 1/(1 + (self.temp_target - self.temp - 2))
         elif self.temp < self.temp_ambient:

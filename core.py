@@ -436,7 +436,7 @@ class TransformerQFunction(nn.Module):
 
 
 class TransformerActorCritic(nn.Module):
-    def __init__(self, observation_space, action_space, embed_dim=32, num_heads=4, feedforward_dim=32, num_layers=1, dropout=0.1):
+    def __init__(self, observation_space, action_space, embed_dim=32, num_heads=4, feedforward_dim=32, num_layers=2, dropout=0.1):
         super().__init__()
 
         # obs_dim = observation_space.n
@@ -453,7 +453,7 @@ class TransformerActorCritic(nn.Module):
         with torch.no_grad():
             obs = obs.unsqueeze(0)
             a, _ = self.pi(obs, deterministic, False)
-            return a
+            return a.squeeze(0)
 
 class ITrXLActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, embed_dim=32, num_heads=4, feedforward_dim=32, num_layers=2, dropout=0.1):
@@ -473,7 +473,7 @@ class ITrXLActorCritic(nn.Module):
         with torch.no_grad():
             obs = obs.unsqueeze(0)
             a, _ = self.pi(obs, deterministic, False)
-            return a
+            return a.squeeze(0)
 
 class GTrXLActorCritic(nn.Module):
     def __init__(self, observation_space, action_space, embed_dim=32, num_heads=4, feedforward_dim=32, num_layers=2, dropout=0.1):
@@ -493,7 +493,7 @@ class GTrXLActorCritic(nn.Module):
         with torch.no_grad():
             obs = obs.unsqueeze(0)
             a, _ = self.pi(obs, deterministic, False)
-            return a
+            return a.squeeze(0)
 
 
 

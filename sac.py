@@ -11,8 +11,8 @@ from cooling import CoolingEnv
 from utils import plot_speed_temp,calculate_energy,calculate_speed_smoothness,calculate_speed_deviation,calculate_temp_deviation,calculate_max_change,calculate_temp_stabilization_time
 from torch.utils.tensorboard import SummaryWriter
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6"
+device = torch.device("cuda:5" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 from datetime import datetime
 
@@ -150,7 +150,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
     """
     time_stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    experiment_dir = os.path.join('exp', time_stamp)
+    experiment_dir = os.path.join('35_gtr_two_layer_r2', time_stamp)
     os.makedirs(experiment_dir, exist_ok=True)
 
     writer = SummaryWriter(experiment_dir)
@@ -341,12 +341,17 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
     # Prepare for interaction with environment
     total_steps = steps_per_epoch * epochs
-    start_time = time.time()
     o, trajectory_ret, trajectory_len = env.reset(), 0, 0
+
+    # 记录模型训练时间
+    training_time = 0
+
+    # 记录采样时间
+    sampling_time = 0
 
     # Main loop: collect experience in env and update/log each epoch
     for t in range(total_steps):
-        
+        sampling_start = time.time()
         # Until start_steps have elapsed, randomly sample actions
         # from a uniform distribution for better exploration. Afterwards, 
         # use the learned policy. 
@@ -372,6 +377,8 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
         # most recent observation!
         o = o2
 
+        sampling_time += time.time() - sampling_start
+
         
         # if (t+1)%steps_per_epoch == 0:
         #     epoch = (t+1)//steps_per_epoch
@@ -386,14 +393,19 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
         # End of trajectory handling
         if d or (trajectory_len == max_trajectory_len):
-            epoch_time = time.time() - start_time
             # logger.store(EpRet=trajectory_ret, EpLen=trajectory_len)
-            writer.add_scalar("Train/EpochTime", epoch_time, epoch)
+            writer.add_scalar("Train/SamplingTime", sampling_time, epoch)
             writer.add_scalar("Train/TotalReturn", trajectory_ret, epoch)
+            writer.add_scalar("Train/TrainingTime", training_time, epoch)
             print("Epoch:" + str(epoch) + " :" + " TotalReturn :" + str(trajectory_ret) + "\n")
             with open(os.path.join(experiment_dir, "log.txt"), "a+") as log_file:
-                print("Epoch:" + str(epoch) + " :" + " TotalReturn :" + str(trajectory_ret) + "\n", file=log_file)
-                print("Epoch:" + str(epoch) + " :" + " EpochTime :" + str(epoch_time) + "\n", file=log_file)
+                print("Epoch:" + str(epoch) + " :" + " TotalReturn :" + str(trajectory_ret), file=log_file)
+                print("Epoch:" + str(epoch) + " :" + " SamplingTime :" + str(sampling_time), file=log_file)
+                print("Epoch:" + str(epoch) + " :" + " TrainingTime :" + str(training_time) + "\n", file=log_file)
+
+            # sampling_time和training_time重新开始计时
+            sampling_time = 0
+            training_time = 0
 
             energy = calculate_energy(env.speeds)
             speed_smooth = calculate_speed_smoothness(env.speeds)
@@ -408,9 +420,11 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
         # Update handling
         if t >= update_after and t % update_every == 0:
+            train_start_time = time.time()
             for _ in range(update_every):
                 batch = replay_buffer.sample_batch(batch_size)
                 update(data=batch)
+            training_time += time.time() - train_start_time
             # for name, param in ac.named_parameters():
             #     if 'fc1.weight' in name:  # 记录第一层权重
             #         writer.add_histogram(name, param, global_step=epoch)
