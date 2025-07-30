@@ -12,7 +12,7 @@ from utils import plot_speed_temp,calculate_energy,calculate_speed_smoothness,ca
 from torch.utils.tensorboard import SummaryWriter
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6"
-device = torch.device("cuda:5" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:4" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 from datetime import datetime
 
@@ -150,7 +150,7 @@ def sac(env_fn, actor_critic=core.MLPActorCritic, ac_kwargs=dict(), seed=0,
 
     """
     time_stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    experiment_dir = os.path.join('35_gtr_two_layer_r2', time_stamp)
+    experiment_dir = os.path.join('new_40_gtr_two_layer_r2', time_stamp)
     os.makedirs(experiment_dir, exist_ok=True)
 
     writer = SummaryWriter(experiment_dir)
@@ -498,6 +498,12 @@ if __name__ == '__main__':
         ac_kwargs = dict()
     elif args.model_name == "gtr":
         ac = core.GTrXLActorCritic
+        ac_kwargs = dict()
+    elif args.model_name == "itr_mlp":
+        ac = core.ITrXLMLPActorCritic
+        ac_kwargs = dict()
+    elif args.model_name == "gtr_mlp":
+        ac = core.GTrXLMLPActorCritic
         ac_kwargs = dict()
 
 

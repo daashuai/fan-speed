@@ -246,7 +246,7 @@ class ITrXL(nn.Module):
         self.pos_embedding = nn.Parameter(torch.zeros(500, embed_dim))
         self.embed_dim = embed_dim
         self.layers = nn.ModuleList([
-            TransformerBlock(embed_dim, num_heads, feedforward_dim, dropout)
+            ITrXLBlock(embed_dim, num_heads, feedforward_dim, dropout)
             for _ in range(num_layers)
         ])
 
@@ -263,6 +263,50 @@ class ITrXL(nn.Module):
         x = x + pos_emb
         for layer in self.layers:
             x = layer(x, memory)
+        x = x.permute(1, 0, 2)
+
+        return x
+
+# ===== ITrXL and MLP===== #
+class ITrXL_MLP(nn.Module):
+    """
+    没有门控机制的 GTrXL，多层堆叠，重命名为 ITrXL。
+    """
+    def __init__(self, obs_dim, embed_dim, num_heads, feedforward_dim, num_layers, dropout=0.1):
+        super().__init__()
+        self.embedding = nn.Linear(obs_dim, embed_dim)
+        self.positional_encoding = PositionalEncoding(embed_dim)
+        self.pos_embedding = nn.Parameter(torch.zeros(500, embed_dim))
+        self.embed_dim = embed_dim
+        self.layers = nn.ModuleList([
+            ITrXLBlock(embed_dim, num_heads, feedforward_dim, dropout)
+            for _ in range(num_layers)
+        ])
+        self.mlp = nn.Sequential(
+            nn.Linear(obs_dim, feedforward_dim),
+            nn.ReLU(),
+            nn.Linear(feedforward_dim, embed_dim),
+        )
+
+    def forward(self, x, memory=None):
+        """
+        前向传播逻辑。
+        - x.permute: 当前时间步的输入 (seq_len, batch_size, embed_dim)。
+        - memory: 跨时间步的记忆。
+        """
+        mlp_out = self.mlp(x)
+
+        x = x.permute(1, 0, 2)
+        seq_len, batch_size, _ = x.size()
+        x = self.embedding(x)
+        pos_emb = self.pos_embedding[:seq_len, :].unsqueeze(1).repeat(1, batch_size, 1)
+        x = x + pos_emb
+        
+        for layer in self.layers:
+            x = layer(x, memory)
+        
+        x = x + mlp_out.permute(1, 0, 2)
+
         x = x.permute(1, 0, 2)
 
         return x
@@ -323,7 +367,7 @@ class GTrXL(nn.Module):
         self.pos_embedding = nn.Parameter(torch.zeros(500, embed_dim))
         self.embed_dim = embed_dim
         self.layers = nn.ModuleList([
-            TransformerBlock(embed_dim, num_heads, feedforward_dim, dropout)
+            GTrXLBlock(embed_dim, num_heads, feedforward_dim, dropout)
             for _ in range(num_layers)
         ])
 
@@ -344,7 +388,46 @@ class GTrXL(nn.Module):
 
         return x
 
+class GTrXL_MLP(nn.Module):
+    """
+    多层门控 Transformer，用于 Actor 和 Critic 的骨干网络。
+    参考论文"Stabilizing Transformers for Reinforcement Learning"
+    没有门控机制的 GTrXL，多层堆叠，重命名为 ITrXL。
+    """
+    def __init__(self, obs_dim, embed_dim, num_heads, feedforward_dim, num_layers, dropout=0.1):
+        super().__init__()
+        self.embedding = nn.Linear(obs_dim, embed_dim)
+        self.positional_encoding = PositionalEncoding(embed_dim)
+        self.pos_embedding = nn.Parameter(torch.zeros(500, embed_dim))
+        self.embed_dim = embed_dim
+        self.layers = nn.ModuleList([
+            GTrXLBlock(embed_dim, num_heads, feedforward_dim, dropout)
+            for _ in range(num_layers)
+        ])
+        self.mlp = nn.Sequential(
+            nn.Linear(obs_dim, feedforward_dim),
+            nn.ReLU(),
+            nn.Linear(feedforward_dim, embed_dim),
+        )
 
+    def forward(self, x, memory=None):
+        """
+        前向传播逻辑。
+        - x.permute: 当前时间步的输入 (seq_len, batch_size, embed_dim)。
+        - memory: 跨时间步的记忆。
+        """
+        mlp_out = self.mlp(x)
+        x = x.permute(1, 0, 2)
+        seq_len, batch_size, _ = x.size()
+        x = self.embedding(x)
+        pos_emb = self.pos_embedding[:seq_len, :].unsqueeze(1).repeat(1, batch_size, 1)
+        x = x + pos_emb
+        for layer in self.layers:
+            x = layer(x, memory)
+        x = x + mlp_out.permute(1, 0, 2)
+        x = x.permute(1, 0, 2)
+
+        return x
 
 
 class SquashedGaussianTransformerActor(nn.Module):
@@ -356,6 +439,10 @@ class SquashedGaussianTransformerActor(nn.Module):
             self.transformer = ITrXL(obs_dim, embed_dim, num_heads, feedforward_dim, num_layers, dropout)
         elif model_name == "gtr":
             self.transformer = GTrXL(obs_dim, embed_dim, num_heads, feedforward_dim, num_layers, dropout)
+        elif model_name == "itr_mlp":
+            self.transformer = ITrXL_MLP(obs_dim, embed_dim, num_heads, feedforward_dim, num_layers, dropout)  
+        elif model_name == "gtr_mlp":
+            self.transformer = GTrXL_MLP(obs_dim, embed_dim, num_heads, feedforward_dim, num_layers, dropout)   
 
         self.mu_layer = nn.Linear(embed_dim, act_dim)
         self.log_std_layer = nn.Linear(embed_dim, act_dim)
@@ -495,6 +582,42 @@ class GTrXLActorCritic(nn.Module):
             a, _ = self.pi(obs, deterministic, False)
             return a.squeeze(0)
 
+class ITrXLMLPActorCritic(nn.Module):
+    def __init__(self, observation_space, action_space, embed_dim=32, num_heads=4, feedforward_dim=32, num_layers=2, dropout=0.1):
+        super().__init__()
 
+        # obs_dim = observation_space.n
+        obs_dim = 1
+        act_dim = action_space.shape[0]
+        act_limit = action_space.high[0]
 
+        # 构建 Actor 和 Critic
+        self.pi = SquashedGaussianTransformerActor("itr_mlp", obs_dim, act_dim, embed_dim, num_heads, feedforward_dim, num_layers, dropout, act_limit)
+        self.q1 = TransformerQFunction("itr", obs_dim, act_dim, embed_dim, num_heads, feedforward_dim, num_layers, dropout)
+        self.q2 = TransformerQFunction("itr", obs_dim, act_dim, embed_dim, num_heads, feedforward_dim, num_layers, dropout)
 
+    def act(self, obs, deterministic=False):
+        with torch.no_grad():
+            obs = obs.unsqueeze(0)
+            a, _ = self.pi(obs, deterministic, False)
+            return a.squeeze(0)
+
+class GTrXLMLPActorCritic(nn.Module):
+    def __init__(self, observation_space, action_space, embed_dim=32, num_heads=4, feedforward_dim=32, num_layers=2, dropout=0.1):
+        super().__init__()
+
+        # obs_dim = observation_space.n
+        obs_dim = 1
+        act_dim = action_space.shape[0]
+        act_limit = action_space.high[0]
+
+        # 构建 Actor 和 Critic
+        self.pi = SquashedGaussianTransformerActor("gtr_mlp", obs_dim, act_dim, embed_dim, num_heads, feedforward_dim, num_layers, dropout, act_limit)
+        self.q1 = TransformerQFunction("gtr", obs_dim, act_dim, embed_dim, num_heads, feedforward_dim, num_layers, dropout)
+        self.q2 = TransformerQFunction("gtr", obs_dim, act_dim, embed_dim, num_heads, feedforward_dim, num_layers, dropout)
+
+    def act(self, obs, deterministic=False):
+        with torch.no_grad():
+            obs = obs.unsqueeze(0)
+            a, _ = self.pi(obs, deterministic, False)
+            return a.squeeze(0)

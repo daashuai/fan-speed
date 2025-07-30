@@ -43,7 +43,7 @@ class CoolingEnv(gym.Env):
     """
 
     def __init__(self, obs_dim=5, workload_mode='medium', mix_switch_interval=200):
-        self.heat_base = 3500
+        self.heat_base = 4000
         self.heat_add  = 500
         self.heat_on_temp = 1000
         self.heat_remove  = 300
@@ -74,7 +74,7 @@ class CoolingEnv(gym.Env):
         self.fan_speed_current = self.fan_min_speed
 
         self.temp_target = 40
-        self.temp_ambient = 35
+        self.temp_ambient = 40
 
         self.interval = 10
         
@@ -249,6 +249,26 @@ class CoolingEnv(gym.Env):
             r1 = 1/(1 + (self.temp_target - self.temp - 2))
         elif self.temp < self.temp_ambient:
             r1 = -math.log(self.temp_ambient -self.temp + 1)
+
+        # if self.temp > self.temp_target + 1:
+        #     r1 = -math.log(self.temp - self.temp_target)
+        # elif self.temp >= self.temp_target - 1 and self.temp <= self.temp_target + 1:
+        #     r1 = 2  # 保持最高奖励
+        #     # r1 = 2 * (1 - abs(self.temp - self.temp_target))  
+        # elif self.temp < self.temp_target - 1 and self.temp >= self.temp_ambient:
+        #     r1 = 1/(1 + (self.temp_target - self.temp - 1)) 
+        # elif self.temp < self.temp_ambient:
+        #     r1 = -math.log(self.temp_ambient - self.temp + 1)
+
+        # if self.temp > self.temp_target + 3:
+        #     r1 = -math.log(self.temp - self.temp_target - 2)
+        # elif self.temp >= self.temp_target - 3 and self.temp <= self.temp_target + 3:
+        #     r1 = 2
+        #     # r1 = 2 * (1 - abs(self.temp - self.temp_target))  
+        # elif self.temp < self.temp_target - 3 and self.temp >= self.temp_ambient:
+        #     r1 = 1/(1 + (self.temp_target - self.temp - 3)) 
+        # elif self.temp < self.temp_ambient:
+        #     r1 = -math.log(self.temp_ambient - self.temp + 1)
 
         # # 如果风扇转速过快, 就给予一个惩罚
         # # 5500 之下的转速给予奖励, 之上的转速给予惩罚
