@@ -1,0 +1,50 @@
+物理参数拟合结果
+========================================
+
+文件: no_workload.csv
+  heat_add: 422.57
+  heat_remove: 399.44
+  fan_effect_modifer: 962.61
+  heat_on_temp: 1005.22
+  MSE: 0.3161
+----------------------------------------
+
+文件: 8cpu_20%_300s.csv
+  heat_add: 1446.57
+  heat_remove: 1789.46
+  fan_effect_modifer: 905.95
+  heat_on_temp: 18.51
+  MSE: 31.0886
+----------------------------------------
+
+文件: 8cpu_50%_300s.csv
+  heat_add: 1318.83
+  heat_remove: 2591.17
+  fan_effect_modifer: 830.25
+  heat_on_temp: 99.42
+  MSE: 40.0420
+----------------------------------------
+
+文件: 8cpu_100%_300s.csv
+  heat_add: 520.33
+  heat_remove: 514.12
+  fan_effect_modifer: 922.14
+  heat_on_temp: 993.74
+  MSE: 9.0471
+----------------------------------------
+
+文件: all.csv
+  heat_add: 54.16
+  heat_remove: 53.45
+  fan_effect_modifer: 1108.26
+  heat_on_temp: 1263.49
+  MSE: 77.7848
+----------------------------------------
+
+文件: all_data.csv
+  heat_add: 71.59
+  heat_remove: 63.55
+  fan_effect_modifer: 1092.09
+  heat_on_temp: 1230.02
+  MSE: 57.7427
+----------------------------------------
