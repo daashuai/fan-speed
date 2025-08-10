@@ -10,15 +10,16 @@ dap.configurations.python = {
 	{
 		type = "python",
 		request = "launch",
-		name = "Launch Trans",
+		name = "Launch",
 		program = "${file}",
-		args = { "--model_name", "trans" },
 	},
+
 	{
 		type = "python",
 		request = "launch",
-		name = "Launch MLP",
+		name = "Launch with Args",
 		program = "${file}",
+		args = { "--model_name", "trans" },
 	},
 }
 print("Loading .nvim.lua completed")
